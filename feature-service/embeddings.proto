@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package embeddings;
+
+service EmbeddingService {
+  rpc GetUserEmbedding (UserId) returns (EmbeddingReply) {}
+  rpc GetMovieEmbedding (MovieId) returns (EmbeddingReply) {}
+  rpc ListUserIds (Empty) returns (UserIdList) {}
+  rpc ListMovieIds (Empty) returns (MovieIdList) {}
+  rpc GetCurrentUserEmbedding (Empty) returns (EmbeddingReply) {}
+  rpc UpdateCurrentUserEmbedding (EmbeddingReply) returns (Empty) {}
+}
+
+message UserId {
+  int32 userId = 1;
+}
+message MovieId {
+  int32 movieId = 1;
+}
+message EmbeddingReply {
+  repeated float values = 1;
+}
+message UserIdList {
+  repeated int32 userIds = 1;
+}
+message MovieIdList {
+  repeated int32 movieIds = 1;
+}
+message Empty {}
+

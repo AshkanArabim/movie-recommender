@@ -1,0 +1,21 @@
+{
+  "id": "5180985e-4149-4bd4-8400-de53d036f385",
+  "importStreams": [
+    {
+      "id": "238ebf6f-6a87-4588-8c18-25e7dcb28b09",
+      "name": "proto-file",
+      "importerName": "ProtoFile",
+      "createMissingOperations": true,
+      "options": {
+        "files": [
+          "../embeddings.proto"
+        ],
+        "importPaths": [],
+        "excludedFiles": []
+      }
+    }
+  ],
+  "authConfigs": [],
+  "certificates": [],
+  "proxies": []
+}
