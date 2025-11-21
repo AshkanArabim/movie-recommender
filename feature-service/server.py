@@ -69,7 +69,7 @@ def serve():
     # Start gRPC server
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=8))
     embeddings_pb2_grpc.add_EmbeddingServiceServicer_to_server(servicer, server)
-    grpc_port = os.environ.get('GRPC_PORT', '50051')
+    grpc_port = os.environ.get('GRPC_PORT', '60000') # TODO: revert to 50051 in docker
     server.add_insecure_port(f'[::]:{grpc_port}')
     print(f"gRPC EmbeddingService serving on port {grpc_port}")
     server.start()

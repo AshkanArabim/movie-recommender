@@ -1,7 +1,8 @@
 import pickle
 import grpc
+import numpy as np
 import redis_loader
-from redis_loader import get_redis_client, USER_PREFIX, MOVIE_PREFIX
+from redis_loader import get_redis_client, USER_PREFIX, MOVIE_PREFIX, CURRENT_USER_EMBEDDING_KEY, EMBEDDING_DIMENSION
 
 
 class EmbeddingService:
@@ -58,6 +59,34 @@ class EmbeddingService:
         movie_ids = pickle.loads(ids_blob)
         return self.embeddings_pb2.MovieIdList(movieIds=list(map(int, movie_ids)))
 
+    def GetCurrentUserEmbedding(self, request, context):
+        """Get the current user embedding. Returns zero vector if not set."""
+        val = self.redis_client.get(CURRENT_USER_EMBEDDING_KEY)
+        if val is None:
+            # Return zero vector as neutral starting value
+            zero_emb = np.zeros(EMBEDDING_DIMENSION, dtype=np.float32)
+            return self.embeddings_pb2.EmbeddingReply(values=list(map(float, zero_emb)))
+        emb = pickle.loads(val)
+        return self.embeddings_pb2.EmbeddingReply(values=list(map(float, emb)))
+
+    def UpdateCurrentUserEmbedding(self, request, context):
+        """Update the current user embedding."""
+        if not request.values:
+            context.set_details("Embedding values cannot be empty")
+            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+            return self.embeddings_pb2.Empty()
+        
+        # Validate dimension
+        if len(request.values) != EMBEDDING_DIMENSION:
+            context.set_details(f"Embedding dimension must be {EMBEDDING_DIMENSION}, got {len(request.values)}")
+            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+            return self.embeddings_pb2.Empty()
+        
+        # Convert to numpy array and store
+        emb = np.array(request.values, dtype=np.float32)
+        self.redis_client.set(CURRENT_USER_EMBEDDING_KEY, pickle.dumps(emb))
+        return self.embeddings_pb2.Empty()
+
 
 def create_servicer(embedding_service, embeddings_pb2_grpc):
     """
@@ -84,6 +113,12 @@ def create_servicer(embedding_service, embeddings_pb2_grpc):
         
         def ListMovieIds(self, request, context):
             return embedding_service.ListMovieIds(request, context)
+        
+        def GetCurrentUserEmbedding(self, request, context):
+            return embedding_service.GetCurrentUserEmbedding(request, context)
+        
+        def UpdateCurrentUserEmbedding(self, request, context):
+            return embedding_service.UpdateCurrentUserEmbedding(request, context)
     
     return EmbeddingServiceServicer()
 

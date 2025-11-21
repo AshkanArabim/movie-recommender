@@ -3,7 +3,7 @@
     {
       "options": {
         "grpc": {
-          "endpoint": "http://localhost:69420",
+          "endpoint": "http://localhost:60000",
           "mode": "grpc"
         }
       }

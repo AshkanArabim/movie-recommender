@@ -10,6 +10,8 @@ USER_EMBEDDING_PATH = '../embedding-calc/user_embeddings.pkl'
 MOVIE_EMBEDDING_PATH = '../embedding-calc/movie_embeddings.pkl'
 USER_PREFIX = 'user_embedding:'
 MOVIE_PREFIX = 'movie_embedding:'
+CURRENT_USER_EMBEDDING_KEY = 'current_user_embedding'
+EMBEDDING_DIMENSION = 64  # Dimension of embeddings (from embedding-calc/exp.ipynb)
 
 # Connect to Redis
 def get_redis_client():

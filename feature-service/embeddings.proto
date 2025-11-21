@@ -7,6 +7,8 @@ service EmbeddingService {
   rpc GetMovieEmbedding (MovieId) returns (EmbeddingReply) {}
   rpc ListUserIds (Empty) returns (UserIdList) {}
   rpc ListMovieIds (Empty) returns (MovieIdList) {}
+  rpc GetCurrentUserEmbedding (Empty) returns (EmbeddingReply) {}
+  rpc UpdateCurrentUserEmbedding (EmbeddingReply) returns (Empty) {}
 }
 
 message UserId {
