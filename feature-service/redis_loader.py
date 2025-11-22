@@ -8,8 +8,8 @@ REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
 REDIS_PORT = int(os.environ.get('REDIS_PORT', 6379))
 USER_EMBEDDING_PATH = '../embedding-calc/user_embeddings.pkl'
 MOVIE_EMBEDDING_PATH = '../embedding-calc/movie_embeddings.pkl'
-USER_PREFIX = 'user_embedding:'
-MOVIE_PREFIX = 'movie_embedding:'
+USER_PREFIX = 'user:'  # Format: user:<id>
+MOVIE_PREFIX = 'movie:'  # Format: movie:<id>
 CURRENT_USER_EMBEDDING_KEY = 'current_user_embedding'
 EMBEDDING_DIMENSION = 64  # Dimension of embeddings (from embedding-calc/exp.ipynb)
 
@@ -58,7 +58,7 @@ def upload_embeddings(redis_client=None):
     for uid, emb in zip(user_ids, user_embs):
         # Store as bytes for efficiency, could use pickle or np.tobytes
         pipe.set(f"{USER_PREFIX}{uid}", pickle.dumps(emb.astype(np.float32)))
-    pipe.set('user_embedding_ids', pickle.dumps(list(map(int, user_ids))))
+    pipe.set('user_ids', pickle.dumps(list(map(int, user_ids))))
     pipe.execute()
 
     # Movies
@@ -67,6 +67,6 @@ def upload_embeddings(redis_client=None):
     pipe = redis_client.pipeline()
     for mid, emb in zip(mov_ids, mov_embs):
         pipe.set(f"{MOVIE_PREFIX}{mid}", pickle.dumps(emb.astype(np.float32)))
-    pipe.set('movie_embedding_ids', pickle.dumps(list(map(int, mov_ids))))
+    pipe.set('movie_ids', pickle.dumps(list(map(int, mov_ids))))
     pipe.execute()
 

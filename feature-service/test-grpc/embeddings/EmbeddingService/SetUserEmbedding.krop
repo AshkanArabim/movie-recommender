@@ -1,10 +1,10 @@
 {
   "details": {
-    "methodFqn": "embeddings.EmbeddingService.UpdateCurrentUserEmbedding"
+    "methodFqn": "embeddings.EmbeddingService.SetUserEmbedding"
   },
   "requests": [
     {
-      "location": "UpdateCurrentUserEmbedding-request.json"
+      "location": "SetUserEmbedding-request.json"
     }
   ],
   "operationType": "unary",

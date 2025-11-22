@@ -1,10 +1,10 @@
 {
   "details": {
-    "methodFqn": "embeddings.EmbeddingService.GetCurrentUserEmbedding"
+    "methodFqn": "embeddings.EmbeddingService.AddWatchedMovie"
   },
   "requests": [
     {
-      "location": "GetCurrentUserEmbedding-request.json"
+      "location": "AddWatchedMovie-request.json"
     }
   ],
   "operationType": "unary",
