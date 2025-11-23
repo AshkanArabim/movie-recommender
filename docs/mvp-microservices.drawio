@@ -1,6 +1,6 @@
 <mxfile host="Electron" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/29.0.3 Chrome/140.0.7339.249 Electron/38.7.0 Safari/537.36" version="29.0.3">
   <diagram name="Page-1" id="0zeqxIb9bh2OWABD-WCW">
-    <mxGraphModel dx="799" dy="601" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="892" dy="671" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -10,10 +10,16 @@
         <mxCell id="yBfkfn7DCKxpCAsbIFAb-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;startArrow=classic;startFill=1;" edge="1" parent="1" source="dyjDzxXp9grtZeDwt7hr-1" target="dyjDzxXp9grtZeDwt7hr-6">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
+        <mxCell id="yBfkfn7DCKxpCAsbIFAb-14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="dyjDzxXp9grtZeDwt7hr-1" target="dyjDzxXp9grtZeDwt7hr-2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
         <mxCell id="dyjDzxXp9grtZeDwt7hr-1" value="Feature Service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
           <mxGeometry x="600" y="720" width="120" height="60" as="geometry" />
         </mxCell>
         <mxCell id="dyjDzxXp9grtZeDwt7hr-14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;startArrow=classic;startFill=1;" parent="1" source="dyjDzxXp9grtZeDwt7hr-2" target="dyjDzxXp9grtZeDwt7hr-4" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="yBfkfn7DCKxpCAsbIFAb-13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="dyjDzxXp9grtZeDwt7hr-2" target="dyjDzxXp9grtZeDwt7hr-1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="dyjDzxXp9grtZeDwt7hr-2" value="Candidate Service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
@@ -40,13 +46,13 @@
         <mxCell id="dyjDzxXp9grtZeDwt7hr-6" value="" style="image;sketch=0;aspect=fixed;html=1;points=[];align=center;fontSize=12;image=img/lib/mscae/Cache_Redis_Product.svg;" parent="1" vertex="1">
           <mxGeometry x="624.29" y="620" width="71.43" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="yBfkfn7DCKxpCAsbIFAb-1" value="also stores current user&#39;s data" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" vertex="1" parent="1">
+        <mxCell id="yBfkfn7DCKxpCAsbIFAb-1" value="also stores &quot;current user&quot; data" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" vertex="1" parent="1">
           <mxGeometry x="710" y="620" width="110" height="70" as="geometry" />
         </mxCell>
         <mxCell id="yBfkfn7DCKxpCAsbIFAb-2" value="&lt;div&gt;&lt;b&gt;legend:&lt;/b&gt;&lt;/div&gt;&lt;div&gt;- &lt;font color=&quot;rgba(0, 0, 0, 0)&quot;&gt;changes for prod&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;b&gt;&lt;br&gt;&lt;/b&gt;&lt;/div&gt;&lt;div&gt;&lt;b&gt;notes:&lt;/b&gt;&lt;/div&gt;- completely stateless. no auth, no database&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;b&gt;feature service:&lt;/b&gt;&lt;/div&gt;&lt;div&gt;- stateless: stores all data in redis&lt;/div&gt;&lt;div&gt;- update user embeddings given the id&lt;/div&gt;&lt;div&gt;- fetch user embeddings given the id&lt;/div&gt;&lt;div&gt;- fetch movie embeddings (not updating anything rn)&lt;/div&gt;&lt;div&gt;&lt;b&gt;&lt;br&gt;&lt;/b&gt;&lt;/div&gt;&lt;div&gt;&lt;b&gt;candidate service:&lt;/b&gt;&lt;/div&gt;&lt;div&gt;- stateless: always receives user id to search&lt;/div&gt;&lt;div&gt;- finds user&#39;s top k unwatched movies&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;- how tf to&amp;nbsp;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;b&gt;&lt;br&gt;&lt;/b&gt;&lt;/div&gt;&lt;div&gt;&lt;b&gt;ranking service:&lt;/b&gt;&lt;/div&gt;&lt;div&gt;&lt;b&gt;&lt;br&gt;&lt;/b&gt;&lt;/div&gt;&lt;div&gt;&lt;b&gt;gateway service:&lt;/b&gt;&lt;/div&gt;&lt;div&gt;&lt;b&gt;&lt;br&gt;&lt;/b&gt;&lt;/div&gt;&lt;div&gt;&lt;b&gt;client:&lt;/b&gt;&lt;/div&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;rounded=0;" vertex="1" parent="1">
           <mxGeometry x="40" y="40" width="290" height="400" as="geometry" />
         </mxCell>
-        <mxCell id="yBfkfn7DCKxpCAsbIFAb-4" value="MVP: always returns search results for current user" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" vertex="1" parent="1">
+        <mxCell id="yBfkfn7DCKxpCAsbIFAb-4" value="stateless. user id provided by gateway" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" vertex="1" parent="1">
           <mxGeometry x="730" y="840" width="110" height="70" as="geometry" />
         </mxCell>
         <mxCell id="yBfkfn7DCKxpCAsbIFAb-8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="yBfkfn7DCKxpCAsbIFAb-6" target="dyjDzxXp9grtZeDwt7hr-6">
@@ -55,8 +61,17 @@
         <mxCell id="yBfkfn7DCKxpCAsbIFAb-6" value="DB" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;" vertex="1" parent="1">
           <mxGeometry x="630" y="480" width="60" height="80" as="geometry" />
         </mxCell>
-        <mxCell id="yBfkfn7DCKxpCAsbIFAb-9" value="can be excluded for MVP" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;rounded=0;" vertex="1" parent="1">
+        <mxCell id="yBfkfn7DCKxpCAsbIFAb-9" value="pre-warmed write-through DB + cache system. stuff is mostly read-heavy" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="730" y="720" width="110" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="yBfkfn7DCKxpCAsbIFAb-10" value="Can be excluded for MVP" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;rounded=0;" vertex="1" parent="1">
           <mxGeometry x="700" y="480" width="110" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="yBfkfn7DCKxpCAsbIFAb-12" value="send rating info to update user embeddings" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="380" y="690" width="110" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="yBfkfn7DCKxpCAsbIFAb-15" value="embedding access for FAISS" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="550" y="790" width="110" height="40" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>

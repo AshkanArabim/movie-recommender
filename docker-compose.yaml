@@ -6,3 +6,17 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"
+
+  feature-service:
+    build:
+      context: .
+      dockerfile: feature-service/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "60000:50051"
+    environment:
+      - GRPC_PORT=50051
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - redis
