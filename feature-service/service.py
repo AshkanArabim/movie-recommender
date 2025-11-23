@@ -80,9 +80,7 @@ class EmbeddingService:
 
     def AddWatchedMovie(self, request, context):
         """Add a movie to a user's watched set."""
-        key = f"{USER_PREFIX}{request.userId}:watched"
-        # Use sadd to add to set (idempotent, O(1))
-        self.redis_client.sadd(key, request.movieId)
+        self._add_to_watched(request.userId, request.movieId)
         return self.embeddings_pb2.Empty()
 
     def RemoveWatchedMovie(self, request, context):
@@ -98,6 +96,108 @@ class EmbeddingService:
         # Use sismember to check membership (O(1))
         has_watched = self.redis_client.sismember(key, request.movieId)
         return self.embeddings_pb2.HasWatchedReply(hasWatched=bool(has_watched))
+
+    def _add_to_watched(self, user_id, movie_id):
+        """
+        Helper method to add a movie to a user's watched set.
+        
+        Args:
+            user_id: User ID
+            movie_id: Movie ID
+        """
+        key = f"{USER_PREFIX}{user_id}:watched"
+        # Use sadd to add to set (idempotent, O(1))
+        self.redis_client.sadd(key, movie_id)
+
+    def _update_user_embedding_with_movie(self, user_id, movie_id, weight, context):
+        """
+        Update user embedding using exponential moving average formula.
+        
+        Formula: u_new = (1 - η) * u + η * w * m
+        where:
+        - u is the current user embedding
+        - m is the movie embedding
+        - w is the weight (1 for like, -0.5 for dislike)
+        - η (eta) is 0.2
+        
+        The result is normalized before storing.
+        
+        Args:
+            user_id: User ID
+            movie_id: Movie ID
+            weight: Weight value (1.0 for like, -0.5 for dislike)
+            context: gRPC context for error handling
+            
+        Returns:
+            Empty response or None if error occurred
+        """
+        eta = 0.2
+        
+        # Get user embedding
+        user_key = f"{USER_PREFIX}{user_id}"
+        user_val = self.redis_client.get(user_key)
+        if user_val is None:
+            # If user doesn't exist, initialize with zero vector
+            u = np.zeros(EMBEDDING_DIMENSION, dtype=np.float32)
+        else:
+            u = pickle.loads(user_val)
+            if not isinstance(u, np.ndarray):
+                u = np.array(u, dtype=np.float32)
+        
+        # Get movie embedding
+        movie_key = f"{MOVIE_PREFIX}{movie_id}"
+        movie_val = self.redis_client.get(movie_key)
+        if movie_val is None:
+            context.set_details(f"Movie embedding {movie_id} not found")
+            context.set_code(grpc.StatusCode.NOT_FOUND)
+            return self.embeddings_pb2.Empty()
+        
+        m = pickle.loads(movie_val)
+        if not isinstance(m, np.ndarray):
+            m = np.array(m, dtype=np.float32)
+        
+        # Apply exponential moving average formula: u_new = (1 - η) * u + η * w * m
+        u_new = (1 - eta) * u + eta * weight * m
+        
+        # Normalize the embedding (L2 normalization)
+        norm = np.linalg.norm(u_new)
+        if norm > 0:
+            u_new = u_new / norm
+        else:
+            # If norm is zero (shouldn't happen in practice), keep as is
+            pass
+        
+        # Store normalized embedding back to Redis
+        self.redis_client.set(user_key, pickle.dumps(u_new.astype(np.float32)))
+        
+        # Add movie to user's watched set
+        self._add_to_watched(user_id, movie_id)
+        
+        return self.embeddings_pb2.Empty()
+
+    def LikeMovie(self, request, context):
+        """
+        Update user embedding based on a like for a movie.
+        Uses exponential moving average with weight w=1.0.
+        """
+        return self._update_user_embedding_with_movie(
+            request.userId, 
+            request.movieId, 
+            weight=1.0, 
+            context=context
+        )
+
+    def DislikeMovie(self, request, context):
+        """
+        Update user embedding based on a dislike for a movie.
+        Uses exponential moving average with weight w=-0.5.
+        """
+        return self._update_user_embedding_with_movie(
+            request.userId, 
+            request.movieId, 
+            weight=-0.5, 
+            context=context
+        )
 
 
 def create_servicer(embedding_service, embeddings_pb2_grpc):
@@ -137,6 +237,12 @@ def create_servicer(embedding_service, embeddings_pb2_grpc):
         
         def HasWatchedMovie(self, request, context):
             return embedding_service.HasWatchedMovie(request, context)
+        
+        def LikeMovie(self, request, context):
+            return embedding_service.LikeMovie(request, context)
+        
+        def DislikeMovie(self, request, context):
+            return embedding_service.DislikeMovie(request, context)
     
     return EmbeddingServiceServicer()
 
