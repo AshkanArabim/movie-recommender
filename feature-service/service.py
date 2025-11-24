@@ -112,6 +112,22 @@ class EmbeddingService:
         has_watched = self.redis_client.sismember(key, request.movieId)
         return self.embeddings_pb2.HasWatchedReply(hasWatched=bool(has_watched))
 
+    def GetWatchedMovies(self, request, context):
+        """Get all movies that a user has watched."""
+        key = f"{USER_PREFIX}{request.userId}:watched"
+        # Use smembers to get all watched movie IDs
+        watched_ids = self.redis_client.smembers(key)
+        if watched_ids is None or len(watched_ids) == 0:
+            return self.embeddings_pb2.MovieIdList(movieIds=[])
+        # Convert from bytes to int (Redis returns bytes when decode_responses=False)
+        movie_ids = []
+        for mid in watched_ids:
+            if isinstance(mid, bytes):
+                movie_ids.append(int(mid.decode('utf-8')))
+            else:
+                movie_ids.append(int(mid))
+        return self.embeddings_pb2.MovieIdList(movieIds=movie_ids)
+
     def _add_to_watched(self, user_id, movie_id):
         """
         Helper method to add a movie to a user's watched set.
@@ -255,6 +271,9 @@ def create_servicer(embedding_service, embeddings_pb2_grpc):
         
         def HasWatchedMovie(self, request, context):
             return embedding_service.HasWatchedMovie(request, context)
+        
+        def GetWatchedMovies(self, request, context):
+            return embedding_service.GetWatchedMovies(request, context)
         
         def LikeMovie(self, request, context):
             return embedding_service.LikeMovie(request, context)

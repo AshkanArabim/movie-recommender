@@ -12,6 +12,7 @@ service EmbeddingService {
   rpc AddWatchedMovie (UserIdAndMovieId) returns (Empty) {}
   rpc RemoveWatchedMovie (UserIdAndMovieId) returns (Empty) {}
   rpc HasWatchedMovie (UserIdAndMovieId) returns (HasWatchedReply) {}
+  rpc GetWatchedMovies (UserId) returns (MovieIdList) {}
   rpc LikeMovie (UserIdAndMovieId) returns (Empty) {}
   rpc DislikeMovie (UserIdAndMovieId) returns (Empty) {}
 }

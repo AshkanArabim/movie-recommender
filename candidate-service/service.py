@@ -72,9 +72,8 @@ class CandidateService:
         if candidates_pb2 is None:
             raise ValueError("candidates_pb2 module must be provided")
         
-        # FAISS index and movie ID mapping
+        # FAISS index with ID mapping
         self.index = None
-        self.movie_ids = None  # Array mapping FAISS index position to movie ID
         
         # Load movie embeddings and build FAISS index on startup
         self._load_movie_embeddings()
@@ -118,7 +117,7 @@ class CandidateService:
         
         # Convert to numpy array
         embedding_matrix = np.vstack(all_embeddings).astype(np.float32)
-        self.movie_ids = np.array(valid_movie_ids, dtype=np.int32)
+        movie_ids_array = np.array(valid_movie_ids, dtype=np.int64)
         
         print(f"Loaded {len(all_embeddings)} movie embeddings. Building FAISS index...")
         
@@ -128,25 +127,28 @@ class CandidateService:
         # Create FAISS index - use GPU if available, otherwise CPU
         dimension = embedding_matrix.shape[1]
         
+        # Create base index
+        base_index = faiss.IndexFlatIP(dimension)
+        
         try:
             num_gpus = faiss.get_num_gpus()
             if num_gpus > 0:
                 print(f"Using GPU FAISS (found {num_gpus} GPU(s))")
                 # Use GPU resource
                 res = faiss.StandardGpuResources()
-                # Create CPU index first, then move to GPU
-                cpu_index = faiss.IndexFlatIP(dimension)
-                self.index = faiss.index_cpu_to_gpu(res, 0, cpu_index)
+                # Move base index to GPU
+                base_index = faiss.index_cpu_to_gpu(res, 0, base_index)
             else:
                 print("Using CPU FAISS (no GPUs detected)")
-                self.index = faiss.IndexFlatIP(dimension)
         except Exception as e:
             # Fallback to CPU if GPU setup fails
             print(f"GPU setup failed ({e}), falling back to CPU FAISS")
-            self.index = faiss.IndexFlatIP(dimension)
         
-        # Add embeddings to index
-        self.index.add(embedding_matrix)
+        # Wrap with IndexIDMap to enable ID-based operations
+        self.index = faiss.IndexIDMap(base_index)
+        
+        # Add embeddings with movie IDs
+        self.index.add_with_ids(embedding_matrix, movie_ids_array)
         
         print(f"FAISS index built successfully with {self.index.ntotal} vectors")
     
@@ -161,7 +163,7 @@ class CandidateService:
         Returns:
             MovieIdList with top 50 recommended movie IDs
         """
-        if self.index is None or self.movie_ids is None:
+        if self.index is None:
             context.set_details("Movie embeddings not loaded. Service may still be initializing.")
             context.set_code(grpc.StatusCode.UNAVAILABLE)
             return self.candidates_pb2.MovieIdList()
@@ -179,19 +181,32 @@ class CandidateService:
             context.set_code(e.code())
             return self.candidates_pb2.MovieIdList()
         
+        # Get watched movies from feature service
+        try:
+            watched_movies_reply = self.feature_service_stub.GetWatchedMovies(user_id_request)
+            watched_movie_ids = np.array(watched_movies_reply.movieIds, dtype=np.int64)
+        except grpc.RpcError as e:
+            # If we can't get watched movies, proceed without filtering (better than failing)
+            print(f"Warning: Failed to get watched movies for user {request.userId}: {e.details()}")
+            watched_movie_ids = np.array([], dtype=np.int64)
+        
         # Normalize user embedding
         user_embedding = user_embedding.reshape(1, -1)
         faiss.normalize_L2(user_embedding)
         
-        # Search for top 50 similar movies
-        k = min(50, self.index.ntotal)  # Don't request more than available
-        distances, indices = self.index.search(user_embedding, k)
+        # Search for top 50 movies, excluding watched ones using IDSelectorNot
+        k = min(50, self.index.ntotal)
         
-        # Map FAISS indices to movie IDs (filter out invalid indices if any)
-        recommended_movie_ids = []
-        for idx in indices[0]:
-            if 0 <= idx < len(self.movie_ids):
-                recommended_movie_ids.append(int(self.movie_ids[idx]))
+        if len(watched_movie_ids) > 0:
+            # Create ID selector to exclude watched movies
+            selector = faiss.IDSelectorNot(watched_movie_ids)
+            distances, indices = self.index.search_with_idselector(user_embedding, k, selector)
+        else:
+            # No watched movies to exclude, do regular search
+            distances, indices = self.index.search(user_embedding, k)
+        
+        # Convert indices (which are now movie IDs) to list
+        recommended_movie_ids = [int(movie_id) for movie_id in indices[0] if movie_id >= 0]
         
         return self.candidates_pb2.MovieIdList(movieIds=recommended_movie_ids)
 
