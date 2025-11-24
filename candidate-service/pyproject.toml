@@ -1,0 +1,14 @@
+[project]
+name = "candidate-service"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "grpcio>=1.76.0",
+    "grpcio-tools>=1.76.0",
+    "numpy>=2.3.5",
+    "faiss-cpu>=1.8.0",
+    # Note: For GPU support, replace faiss-cpu with faiss-gpu:
+    # "faiss-gpu>=1.8.0",
+]

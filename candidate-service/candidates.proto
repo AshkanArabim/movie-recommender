@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package candidates;
+
+service CandidateService {
+  rpc GetRecommendations (UserId) returns (MovieIdList) {}
+}
+
+message UserId {
+  int32 userId = 1;
+}
+
+message MovieIdList {
+  repeated int32 movieIds = 1;
+}
+

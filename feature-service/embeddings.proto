@@ -6,6 +6,7 @@ service EmbeddingService {
   rpc GetUserEmbedding (UserId) returns (EmbeddingReply) {}
   rpc SetUserEmbedding (UserEmbedding) returns (Empty) {}
   rpc GetMovieEmbedding (MovieId) returns (EmbeddingReply) {}
+  rpc GetMovieEmbeddingsBatch (MovieIdList) returns (MovieEmbeddingsBatch) {}
   rpc ListUserIds (Empty) returns (UserIdList) {}
   rpc ListMovieIds (Empty) returns (MovieIdList) {}
   rpc AddWatchedMovie (UserIdAndMovieId) returns (Empty) {}
@@ -41,5 +42,12 @@ message UserEmbedding {
 }
 message HasWatchedReply {
   bool hasWatched = 1;
+}
+message MovieEmbedding {
+  int32 movieId = 1;
+  repeated float values = 2;
+}
+message MovieEmbeddingsBatch {
+  repeated MovieEmbedding embeddings = 1;
 }
 

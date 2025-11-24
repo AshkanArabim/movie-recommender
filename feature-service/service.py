@@ -43,6 +43,21 @@ class EmbeddingService:
         emb = pickle.loads(val)
         return self.embeddings_pb2.EmbeddingReply(values=list(map(float, emb)))
 
+    def GetMovieEmbeddingsBatch(self, request, context):
+        """Get embeddings for multiple movies in a single call for efficiency."""
+        embeddings = []
+        for movie_id in request.movieIds:
+            key = f"{MOVIE_PREFIX}{movie_id}"
+            val = self.redis_client.get(key)
+            if val is not None:
+                emb = pickle.loads(val)
+                movie_emb = self.embeddings_pb2.MovieEmbedding(
+                    movieId=movie_id,
+                    values=list(map(float, emb))
+                )
+                embeddings.append(movie_emb)
+        return self.embeddings_pb2.MovieEmbeddingsBatch(embeddings=embeddings)
+
     def ListUserIds(self, request, context):
         """List all available user IDs."""
         ids_blob = self.redis_client.get('user_ids')
@@ -222,6 +237,9 @@ def create_servicer(embedding_service, embeddings_pb2_grpc):
         
         def GetMovieEmbedding(self, request, context):
             return embedding_service.GetMovieEmbedding(request, context)
+        
+        def GetMovieEmbeddingsBatch(self, request, context):
+            return embedding_service.GetMovieEmbeddingsBatch(request, context)
         
         def ListUserIds(self, request, context):
             return embedding_service.ListUserIds(request, context)

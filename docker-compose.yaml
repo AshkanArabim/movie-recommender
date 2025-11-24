@@ -20,3 +20,17 @@ services:
       - REDIS_PORT=6379
     depends_on:
       - redis
+
+  candidate-service:
+    build:
+      context: .
+      dockerfile: candidate-service/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "60001:50052"
+    environment:
+      - GRPC_PORT=50052
+      - FEATURE_SERVICE_HOST=feature-service
+      - FEATURE_SERVICE_PORT=50051
+    depends_on:
+      - feature-service

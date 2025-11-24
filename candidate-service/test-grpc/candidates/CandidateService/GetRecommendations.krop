@@ -1,0 +1,13 @@
+{
+  "details": {
+    "methodFqn": "candidates.CandidateService.GetRecommendations"
+  },
+  "requests": [
+    {
+      "location": "GetRecommendations-request.json"
+    }
+  ],
+  "operationType": "unary",
+  "invokerName": "grpc",
+  "importStreamId": "f0702359-1101-44c3-8340-9edc04240d7f"
+}
