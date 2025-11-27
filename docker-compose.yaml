@@ -1,6 +1,18 @@
 version: "3.9"
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=feature_service
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
   redis:
     image: redis:7.4
     restart: unless-stopped
@@ -18,19 +30,28 @@ services:
       - GRPC_PORT=50051
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=feature_service
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
     depends_on:
+      - postgres
       - redis
 
-  candidate-service:
-    build:
-      context: .
-      dockerfile: candidate-service/Dockerfile
-    restart: unless-stopped
-    ports:
-      - "60001:50052"
-    environment:
-      - GRPC_PORT=50052
-      - FEATURE_SERVICE_HOST=feature-service
-      - FEATURE_SERVICE_PORT=50051
-    depends_on:
-      - feature-service
+volumes:
+  postgres_data:
+
+  # candidate-service:
+  #   build:
+  #     context: .
+  #     dockerfile: candidate-service/Dockerfile
+  #   restart: unless-stopped
+  #   ports:
+  #     - "60001:50052"
+  #   environment:
+  #     - GRPC_PORT=50052
+  #     - FEATURE_SERVICE_HOST=feature-service
+  #     - FEATURE_SERVICE_PORT=50051
+  #   depends_on:
+  #     - feature-service

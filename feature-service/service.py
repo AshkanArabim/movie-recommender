@@ -2,6 +2,7 @@ import pickle
 import grpc
 import numpy as np
 import redis_loader
+import db
 from redis_loader import get_redis_client, USER_PREFIX, MOVIE_PREFIX, EMBEDDING_DIMENSION
 
 
@@ -26,9 +27,15 @@ class EmbeddingService:
         key = f"{USER_PREFIX}{request.userId}"
         val = self.redis_client.get(key)
         if val is None:
-            # Return zero vector if user not found
-            zero_emb = np.zeros(EMBEDDING_DIMENSION, dtype=np.float32)
-            return self.embeddings_pb2.EmbeddingReply(values=list(map(float, zero_emb)))
+            # Cache miss: try database
+            emb = db.get_user_embedding(request.userId)
+            if emb is None:
+                # Return zero vector if user not found
+                zero_emb = np.zeros(EMBEDDING_DIMENSION, dtype=np.float32)
+                return self.embeddings_pb2.EmbeddingReply(values=list(map(float, zero_emb)))
+            # Populate cache
+            self.redis_client.set(key, pickle.dumps(emb))
+            return self.embeddings_pb2.EmbeddingReply(values=list(map(float, emb)))
         emb = pickle.loads(val)
         return self.embeddings_pb2.EmbeddingReply(values=list(map(float, emb)))
 
@@ -37,15 +44,24 @@ class EmbeddingService:
         key = f"{MOVIE_PREFIX}{request.movieId}"
         val = self.redis_client.get(key)
         if val is None:
-            context.set_details(f"Movie embedding {request.movieId} not found")
-            context.set_code(grpc.StatusCode.NOT_FOUND)
-            return self.embeddings_pb2.EmbeddingReply()
+            # Cache miss: try database
+            emb = db.get_movie_embedding(request.movieId)
+            if emb is None:
+                context.set_details(f"Movie embedding {request.movieId} not found")
+                context.set_code(grpc.StatusCode.NOT_FOUND)
+                return self.embeddings_pb2.EmbeddingReply()
+            # Populate cache
+            self.redis_client.set(key, pickle.dumps(emb))
+            return self.embeddings_pb2.EmbeddingReply(values=list(map(float, emb)))
         emb = pickle.loads(val)
         return self.embeddings_pb2.EmbeddingReply(values=list(map(float, emb)))
 
     def GetMovieEmbeddingsBatch(self, request, context):
         """Get embeddings for multiple movies in a single call for efficiency."""
         embeddings = []
+        missing_ids = []
+        
+        # First pass: check cache
         for movie_id in request.movieIds:
             key = f"{MOVIE_PREFIX}{movie_id}"
             val = self.redis_client.get(key)
@@ -56,13 +72,36 @@ class EmbeddingService:
                     values=list(map(float, emb))
                 )
                 embeddings.append(movie_emb)
+            else:
+                missing_ids.append(movie_id)
+        
+        # Second pass: fetch missing from database and populate cache
+        if missing_ids:
+            db_embeddings = db.get_movie_embeddings_batch(missing_ids)
+            for movie_id in missing_ids:
+                if movie_id in db_embeddings:
+                    emb = db_embeddings[movie_id]
+                    # Populate cache
+                    key = f"{MOVIE_PREFIX}{movie_id}"
+                    self.redis_client.set(key, pickle.dumps(emb))
+                    movie_emb = self.embeddings_pb2.MovieEmbedding(
+                        movieId=movie_id,
+                        values=list(map(float, emb))
+                    )
+                    embeddings.append(movie_emb)
+        
         return self.embeddings_pb2.MovieEmbeddingsBatch(embeddings=embeddings)
 
     def ListUserIds(self, request, context):
         """List all available user IDs."""
         ids_blob = self.redis_client.get('user_ids')
         if ids_blob is None:
-            return self.embeddings_pb2.UserIdList(userIds=[])
+            # Cache miss: try database
+            user_ids = db.get_all_user_ids()
+            # Populate cache
+            if user_ids:
+                self.redis_client.set('user_ids', pickle.dumps(user_ids))
+            return self.embeddings_pb2.UserIdList(userIds=user_ids)
         user_ids = pickle.loads(ids_blob)
         return self.embeddings_pb2.UserIdList(userIds=list(map(int, user_ids)))
 
@@ -70,12 +109,17 @@ class EmbeddingService:
         """List all available movie IDs."""
         ids_blob = self.redis_client.get('movie_ids')
         if ids_blob is None:
-            return self.embeddings_pb2.MovieIdList(movieIds=[])
+            # Cache miss: try database
+            movie_ids = db.get_all_movie_ids()
+            # Populate cache
+            if movie_ids:
+                self.redis_client.set('movie_ids', pickle.dumps(movie_ids))
+            return self.embeddings_pb2.MovieIdList(movieIds=movie_ids)
         movie_ids = pickle.loads(ids_blob)
         return self.embeddings_pb2.MovieIdList(movieIds=list(map(int, movie_ids)))
 
     def SetUserEmbedding(self, request, context):
-        """Set the user embedding."""
+        """Set the user embedding. Write-through cache: writes to both DB and Redis."""
         if not request.values:
             context.set_details("Embedding values cannot be empty")
             context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
@@ -87,19 +131,27 @@ class EmbeddingService:
             context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
             return self.embeddings_pb2.Empty()
         
-        # Convert to numpy array and store
+        # Convert to numpy array
         emb = np.array(request.values, dtype=np.float32)
+        
+        # Write-through: write to both DB and Redis
+        db.set_user_embedding(request.userId, emb)
         key = f"{USER_PREFIX}{request.userId}"
         self.redis_client.set(key, pickle.dumps(emb))
+        
         return self.embeddings_pb2.Empty()
 
     def AddWatchedMovie(self, request, context):
-        """Add a movie to a user's watched set."""
+        """Add a movie to a user's watched set. Write-through cache: writes to both DB and Redis."""
+        # Write-through: write to both DB and Redis
+        db.add_watched_movie(request.userId, request.movieId)
         self._add_to_watched(request.userId, request.movieId)
         return self.embeddings_pb2.Empty()
 
     def RemoveWatchedMovie(self, request, context):
-        """Remove a movie from a user's watched set."""
+        """Remove a movie from a user's watched set. Write-through cache: writes to both DB and Redis."""
+        # Write-through: write to both DB and Redis
+        db.remove_watched_movie(request.userId, request.movieId)
         key = f"{USER_PREFIX}{request.userId}:watched"
         # Use srem to remove from set (O(1))
         self.redis_client.srem(key, request.movieId)
@@ -110,6 +162,12 @@ class EmbeddingService:
         key = f"{USER_PREFIX}{request.userId}:watched"
         # Use sismember to check membership (O(1))
         has_watched = self.redis_client.sismember(key, request.movieId)
+        if not has_watched:
+            # Cache miss: try database
+            has_watched = db.has_watched_movie(request.userId, request.movieId)
+            # If found in DB, add to cache
+            if has_watched:
+                self.redis_client.sadd(key, request.movieId)
         return self.embeddings_pb2.HasWatchedReply(hasWatched=bool(has_watched))
 
     def GetWatchedMovies(self, request, context):
@@ -118,7 +176,14 @@ class EmbeddingService:
         # Use smembers to get all watched movie IDs
         watched_ids = self.redis_client.smembers(key)
         if watched_ids is None or len(watched_ids) == 0:
-            return self.embeddings_pb2.MovieIdList(movieIds=[])
+            # Cache miss: try database
+            movie_ids_set = db.get_watched_movies(request.userId)
+            if not movie_ids_set:
+                return self.embeddings_pb2.MovieIdList(movieIds=[])
+            # Populate cache
+            if movie_ids_set:
+                self.redis_client.sadd(key, *movie_ids_set)
+            return self.embeddings_pb2.MovieIdList(movieIds=list(movie_ids_set))
         # Convert from bytes to int (Redis returns bytes when decode_responses=False)
         movie_ids = []
         for mid in watched_ids:
@@ -168,8 +233,14 @@ class EmbeddingService:
         user_key = f"{USER_PREFIX}{user_id}"
         user_val = self.redis_client.get(user_key)
         if user_val is None:
-            # If user doesn't exist, initialize with zero vector
-            u = np.zeros(EMBEDDING_DIMENSION, dtype=np.float32)
+            # Cache miss: try database
+            u = db.get_user_embedding(user_id)
+            if u is None:
+                # If user doesn't exist, initialize with zero vector
+                u = np.zeros(EMBEDDING_DIMENSION, dtype=np.float32)
+            else:
+                # Populate cache
+                self.redis_client.set(user_key, pickle.dumps(u))
         else:
             u = pickle.loads(user_val)
             if not isinstance(u, np.ndarray):
@@ -179,13 +250,18 @@ class EmbeddingService:
         movie_key = f"{MOVIE_PREFIX}{movie_id}"
         movie_val = self.redis_client.get(movie_key)
         if movie_val is None:
-            context.set_details(f"Movie embedding {movie_id} not found")
-            context.set_code(grpc.StatusCode.NOT_FOUND)
-            return self.embeddings_pb2.Empty()
-        
-        m = pickle.loads(movie_val)
-        if not isinstance(m, np.ndarray):
-            m = np.array(m, dtype=np.float32)
+            # Cache miss: try database
+            m = db.get_movie_embedding(movie_id)
+            if m is None:
+                context.set_details(f"Movie embedding {movie_id} not found")
+                context.set_code(grpc.StatusCode.NOT_FOUND)
+                return self.embeddings_pb2.Empty()
+            # Populate cache
+            self.redis_client.set(movie_key, pickle.dumps(m))
+        else:
+            m = pickle.loads(movie_val)
+            if not isinstance(m, np.ndarray):
+                m = np.array(m, dtype=np.float32)
         
         # Apply exponential moving average formula: u_new = (1 - η) * u + η * w * m
         u_new = (1 - eta) * u + eta * weight * m
@@ -198,10 +274,12 @@ class EmbeddingService:
             # If norm is zero (shouldn't happen in practice), keep as is
             pass
         
-        # Store normalized embedding back to Redis
+        # Write-through: store normalized embedding to both DB and Redis
+        db.set_user_embedding(user_id, u_new.astype(np.float32))
         self.redis_client.set(user_key, pickle.dumps(u_new.astype(np.float32)))
         
-        # Add movie to user's watched set
+        # Add movie to user's watched set (write-through)
+        db.add_watched_movie(user_id, movie_id)
         self._add_to_watched(user_id, movie_id)
         
         return self.embeddings_pb2.Empty()
