@@ -1,0 +1,21 @@
+{
+  "id": "f08f69f5-da6b-4e63-b7eb-c3b488417107",
+  "importStreams": [
+    {
+      "id": "e1b003ff-d711-4f65-ba3c-d6e6a80a8265",
+      "name": "proto-file",
+      "importerName": "ProtoFile",
+      "createMissingOperations": true,
+      "options": {
+        "files": [
+          "../ranking.proto"
+        ],
+        "importPaths": [],
+        "excludedFiles": []
+      }
+    }
+  ],
+  "authConfigs": [],
+  "certificates": [],
+  "proxies": []
+}

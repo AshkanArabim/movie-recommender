@@ -56,5 +56,22 @@ services:
     depends_on:
       - feature-service
 
+  ranking-service:
+    build:
+      context: .
+      dockerfile: ranking-service/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "60002:50053"
+    environment:
+      - GRPC_PORT=50053
+      - CANDIDATE_SERVICE_HOST=candidate-service
+      - CANDIDATE_SERVICE_PORT=50052
+      - FEATURE_SERVICE_HOST=feature-service
+      - FEATURE_SERVICE_PORT=50051
+    depends_on:
+      - candidate-service
+      - feature-service
+
 volumes:
   postgres_data:

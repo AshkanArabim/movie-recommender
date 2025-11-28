@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package ranking;
+
+service RankingService {
+  rpc GetRankedRecommendations (UserId) returns (MovieIdList) {}
+}
+
+message UserId {
+  int32 userId = 1;
+}
+
+message MovieIdList {
+  repeated int32 movieIds = 1;
+}
+

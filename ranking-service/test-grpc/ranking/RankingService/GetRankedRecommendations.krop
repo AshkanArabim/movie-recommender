@@ -1,0 +1,13 @@
+{
+  "details": {
+    "methodFqn": "ranking.RankingService.GetRankedRecommendations"
+  },
+  "requests": [
+    {
+      "location": "GetRankedRecommendations-request.json"
+    }
+  ],
+  "operationType": "unary",
+  "invokerName": "grpc",
+  "importStreamId": "e1b003ff-d711-4f65-ba3c-d6e6a80a8265"
+}
