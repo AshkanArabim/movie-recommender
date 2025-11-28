@@ -1,13 +1,20 @@
 import os
 import sys
 import tempfile
+import pickle
+import re
+import csv
 from concurrent import futures
+from typing import Tuple, Optional
 
 import grpc
 from grpc_tools import protoc
+import numpy as np
 
 import redis_loader
+import db
 from service import EmbeddingService
+from redis_loader import USER_PREFIX, MOVIE_PREFIX, MOVIE_METADATA_PREFIX
 
 
 def generate_proto_modules():
@@ -50,16 +57,185 @@ def generate_proto_modules():
     return embeddings_pb2, embeddings_pb2_grpc
 
 
+def prewarm_cache_from_db(redis_client):
+    """Pre-warm Redis cache from PostgreSQL database."""
+    print("Pre-warming cache from database...")
+    
+    # Load user embeddings
+    user_embeddings = db.load_all_user_embeddings()
+    if user_embeddings:
+        pipe = redis_client.pipeline()
+        user_ids = []
+        for user_id, emb in user_embeddings:
+            key = f"{USER_PREFIX}{user_id}"
+            pipe.set(key, pickle.dumps(emb.astype(np.float32)))
+            user_ids.append(user_id)
+        if user_ids:
+            pipe.set('user_ids', pickle.dumps(user_ids))
+        pipe.execute()
+        print(f"Loaded {len(user_embeddings)} user embeddings into cache")
+    
+    # Load movie embeddings
+    movie_embeddings = db.load_all_movie_embeddings()
+    if movie_embeddings:
+        pipe = redis_client.pipeline()
+        movie_ids = []
+        for movie_id, emb in movie_embeddings:
+            key = f"{MOVIE_PREFIX}{movie_id}"
+            pipe.set(key, pickle.dumps(emb.astype(np.float32)))
+            movie_ids.append(movie_id)
+        if movie_ids:
+            pipe.set('movie_ids', pickle.dumps(movie_ids))
+        pipe.execute()
+        print(f"Loaded {len(movie_embeddings)} movie embeddings into cache")
+    
+    # Load watched movies
+    watched_movies = db.load_all_watched_movies()
+    if watched_movies:
+        # Group by user_id for efficient Redis operations
+        user_watched_map = {}
+        for user_id, movie_id in watched_movies:
+            if user_id not in user_watched_map:
+                user_watched_map[user_id] = []
+            user_watched_map[user_id].append(movie_id)
+        
+        pipe = redis_client.pipeline()
+        for user_id, movie_ids in user_watched_map.items():
+            key = f"{USER_PREFIX}{user_id}:watched"
+            pipe.sadd(key, *movie_ids)
+        pipe.execute()
+        print(f"Loaded {len(watched_movies)} watched movie relationships into cache")
+    
+    # Load movie metadata (optional - can be loaded on-demand)
+    # We'll skip pre-warming metadata to save memory, but it will be cached on first access
+    
+    print("Cache pre-warming completed.")
+
+
+def parse_title_and_year(title: str) -> Tuple[str, Optional[int]]:
+    """
+    Parse movie title to extract title and release year.
+    Format: "Title (YYYY)" -> ("Title", YYYY)
+    If no year found, returns (title, None)
+    """
+    # Match pattern like "Title (1995)"
+    match = re.match(r'^(.+?)\s*\((\d{4})\)\s*$', title)
+    if match:
+        clean_title = match.group(1).strip()
+        year = int(match.group(2))
+        return clean_title, year
+    return title, None
+
+
+def initialize_database_from_pickle():
+    """Initialize database from pickle files if database is empty."""
+    print("Checking if database needs initialization from pickle files...")
+    
+    # Check if database has any data
+    user_ids = db.get_all_user_ids()
+    movie_ids = db.get_all_movie_ids()
+    
+    if not user_ids and not movie_ids:
+        print("Database is empty. Loading from pickle files...")
+        
+        # Load from pickle files
+        user_df = redis_loader.load_pkl(redis_loader.USER_EMBEDDING_PATH)
+        user_ids_list, user_embs = redis_loader.ensure_numpy(user_df)
+        
+        movie_df = redis_loader.load_pkl(redis_loader.MOVIE_EMBEDDING_PATH)
+        movie_ids_list, movie_embs = redis_loader.ensure_numpy(movie_df)
+        
+        # Store in database
+        print(f"Storing {len(user_ids_list)} user embeddings in database...")
+        for uid, emb in zip(user_ids_list, user_embs):
+            db.set_user_embedding(int(uid), emb.astype(np.float32))
+        
+        print(f"Storing {len(movie_ids_list)} movie embeddings in database...")
+        for mid, emb in zip(movie_ids_list, movie_embs):
+            db.set_movie_embedding(int(mid), emb.astype(np.float32))
+        
+        print("Database initialized from pickle files.")
+    else:
+        print(f"Database already contains {len(user_ids)} users and {len(movie_ids)} movies.")
+
+
+def initialize_movie_metadata_from_csv():
+    """Initialize movie metadata from CSV files if database is empty."""
+    print("Checking if movie metadata needs initialization from CSV files...")
+    
+    # Check if database has any movie metadata
+    if db.has_movie_metadata():
+        print("Movie metadata already exists in database.")
+        return
+    
+    print("Database movie metadata is empty. Loading from CSV files...")
+    
+    # Get data directory path
+    data_dir = os.environ.get('DATA_DIR', '/data')
+    movies_csv = os.path.join(data_dir, 'movies.csv')
+    num_ratings_csv = os.path.join(data_dir, 'movie_num_ratings.csv')
+    
+    if not os.path.exists(movies_csv):
+        print(f"Warning: {movies_csv} not found. Skipping movie metadata initialization.")
+        return
+    
+    # Load num_ratings into a dictionary
+    num_ratings_map = {}
+    if os.path.exists(num_ratings_csv):
+        with open(num_ratings_csv, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                movie_id = int(row['movieId'])
+                num_ratings = int(row['num_ratings'])
+                num_ratings_map[movie_id] = num_ratings
+    
+    # Load movies metadata
+    count = 0
+    with open(movies_csv, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            movie_id = int(row['movieId'])
+            title_with_year = row['title']
+            genres_str = row['genres']
+            
+            # Parse title and year
+            title, release_year = parse_title_and_year(title_with_year)
+            
+            # Parse genres (pipe-separated)
+            genres = [g.strip() for g in genres_str.split('|')] if genres_str and genres_str != '(no genres listed)' else []
+            
+            # Get num_ratings if available
+            num_ratings = num_ratings_map.get(movie_id, 0)
+            
+            # Store in database
+            db.set_movie_metadata(movie_id, title, release_year, genres, num_ratings)
+            count += 1
+            
+            if count % 10000 == 0:
+                print(f"Loaded {count} movie metadata records...")
+    
+    print(f"Loaded {count} movie metadata records from CSV files.")
+
+
 def serve():
     """Start the gRPC server."""
     # Generate proto modules
     embeddings_pb2, embeddings_pb2_grpc = generate_proto_modules()
     
-    # Upload embeddings to Redis at startup
-    print("Uploading embeddings to Redis...")
+    # Initialize database schema
+    print("Initializing database schema...")
+    db.init_schema()
+    print("Database schema initialized.")
+    
+    # Initialize database from pickle files if empty
+    initialize_database_from_pickle()
+    
+    # Initialize movie metadata from CSV files if empty
+    initialize_movie_metadata_from_csv()
+    
+    # Pre-warm cache from database
     redis_client = redis_loader.get_redis_client()
-    redis_loader.upload_embeddings(redis_client)
-    print("Embeddings uploaded successfully.")
+    prewarm_cache_from_db(redis_client)
     
     # Create service instance
     embedding_service = EmbeddingService(redis_client, embeddings_pb2)

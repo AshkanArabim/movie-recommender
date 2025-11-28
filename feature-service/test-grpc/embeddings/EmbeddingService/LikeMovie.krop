@@ -1,0 +1,13 @@
+{
+  "details": {
+    "methodFqn": "embeddings.EmbeddingService.LikeMovie"
+  },
+  "requests": [
+    {
+      "location": "LikeMovie-request.json"
+    }
+  ],
+  "operationType": "unary",
+  "invokerName": "grpc",
+  "importStreamId": "238ebf6f-6a87-4588-8c18-25e7dcb28b09"
+}

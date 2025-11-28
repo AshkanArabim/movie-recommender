@@ -4,11 +4,18 @@ package embeddings;
 
 service EmbeddingService {
   rpc GetUserEmbedding (UserId) returns (EmbeddingReply) {}
+  rpc SetUserEmbedding (UserEmbedding) returns (Empty) {}
   rpc GetMovieEmbedding (MovieId) returns (EmbeddingReply) {}
+  rpc GetMovieEmbeddingsBatch (MovieIdList) returns (MovieEmbeddingsBatch) {}
   rpc ListUserIds (Empty) returns (UserIdList) {}
   rpc ListMovieIds (Empty) returns (MovieIdList) {}
-  rpc GetCurrentUserEmbedding (Empty) returns (EmbeddingReply) {}
-  rpc UpdateCurrentUserEmbedding (EmbeddingReply) returns (Empty) {}
+  rpc AddWatchedMovie (UserIdAndMovieId) returns (Empty) {}
+  rpc RemoveWatchedMovie (UserIdAndMovieId) returns (Empty) {}
+  rpc HasWatchedMovie (UserIdAndMovieId) returns (HasWatchedReply) {}
+  rpc GetWatchedMovies (UserId) returns (MovieIdList) {}
+  rpc LikeMovie (UserIdAndMovieId) returns (Empty) {}
+  rpc DislikeMovie (UserIdAndMovieId) returns (Empty) {}
+  rpc GetMovieMetadata (MovieId) returns (MovieMetadataReply) {}
 }
 
 message UserId {
@@ -27,4 +34,28 @@ message MovieIdList {
   repeated int32 movieIds = 1;
 }
 message Empty {}
+message UserIdAndMovieId {
+  int32 userId = 1;
+  int32 movieId = 2;
+}
+message UserEmbedding {
+  int32 userId = 1;
+  repeated float values = 2;
+}
+message HasWatchedReply {
+  bool hasWatched = 1;
+}
+message MovieEmbedding {
+  int32 movieId = 1;
+  repeated float values = 2;
+}
+message MovieEmbeddingsBatch {
+  repeated MovieEmbedding embeddings = 1;
+}
+message MovieMetadataReply {
+  string title = 1;
+  int32 releaseYear = 2;
+  repeated string genres = 3;
+  int32 numRatings = 4;
+}
 

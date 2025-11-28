@@ -1,10 +1,10 @@
 {
   "details": {
-    "methodFqn": "embeddings.EmbeddingService.GetCurrentUserEmbedding"
+    "methodFqn": "embeddings.EmbeddingService.GetMovieEmbeddingsBatch"
   },
   "requests": [
     {
-      "location": "GetCurrentUserEmbedding-request.json"
+      "location": "GetMovieEmbeddingsBatch-request.json"
     }
   ],
   "operationType": "unary",
