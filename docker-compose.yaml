@@ -35,6 +35,9 @@ services:
       - DB_NAME=feature_service
       - DB_USER=postgres
       - DB_PASSWORD=postgres
+      - DATA_DIR=/data
+    volumes:
+      - ./data:/data:ro
     depends_on:
       - postgres
       - redis

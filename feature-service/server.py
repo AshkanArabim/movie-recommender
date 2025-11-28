@@ -2,7 +2,10 @@ import os
 import sys
 import tempfile
 import pickle
+import re
+import csv
 from concurrent import futures
+from typing import Tuple, Optional
 
 import grpc
 from grpc_tools import protoc
@@ -11,7 +14,7 @@ import numpy as np
 import redis_loader
 import db
 from service import EmbeddingService
-from redis_loader import USER_PREFIX, MOVIE_PREFIX
+from redis_loader import USER_PREFIX, MOVIE_PREFIX, MOVIE_METADATA_PREFIX
 
 
 def generate_proto_modules():
@@ -103,7 +106,25 @@ def prewarm_cache_from_db(redis_client):
         pipe.execute()
         print(f"Loaded {len(watched_movies)} watched movie relationships into cache")
     
+    # Load movie metadata (optional - can be loaded on-demand)
+    # We'll skip pre-warming metadata to save memory, but it will be cached on first access
+    
     print("Cache pre-warming completed.")
+
+
+def parse_title_and_year(title: str) -> Tuple[str, Optional[int]]:
+    """
+    Parse movie title to extract title and release year.
+    Format: "Title (YYYY)" -> ("Title", YYYY)
+    If no year found, returns (title, None)
+    """
+    # Match pattern like "Title (1995)"
+    match = re.match(r'^(.+?)\s*\((\d{4})\)\s*$', title)
+    if match:
+        clean_title = match.group(1).strip()
+        year = int(match.group(2))
+        return clean_title, year
+    return title, None
 
 
 def initialize_database_from_pickle():
@@ -138,6 +159,64 @@ def initialize_database_from_pickle():
         print(f"Database already contains {len(user_ids)} users and {len(movie_ids)} movies.")
 
 
+def initialize_movie_metadata_from_csv():
+    """Initialize movie metadata from CSV files if database is empty."""
+    print("Checking if movie metadata needs initialization from CSV files...")
+    
+    # Check if database has any movie metadata
+    if db.has_movie_metadata():
+        print("Movie metadata already exists in database.")
+        return
+    
+    print("Database movie metadata is empty. Loading from CSV files...")
+    
+    # Get data directory path
+    data_dir = os.environ.get('DATA_DIR', '/data')
+    movies_csv = os.path.join(data_dir, 'movies.csv')
+    num_ratings_csv = os.path.join(data_dir, 'movie_num_ratings.csv')
+    
+    if not os.path.exists(movies_csv):
+        print(f"Warning: {movies_csv} not found. Skipping movie metadata initialization.")
+        return
+    
+    # Load num_ratings into a dictionary
+    num_ratings_map = {}
+    if os.path.exists(num_ratings_csv):
+        with open(num_ratings_csv, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                movie_id = int(row['movieId'])
+                num_ratings = int(row['num_ratings'])
+                num_ratings_map[movie_id] = num_ratings
+    
+    # Load movies metadata
+    count = 0
+    with open(movies_csv, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            movie_id = int(row['movieId'])
+            title_with_year = row['title']
+            genres_str = row['genres']
+            
+            # Parse title and year
+            title, release_year = parse_title_and_year(title_with_year)
+            
+            # Parse genres (pipe-separated)
+            genres = [g.strip() for g in genres_str.split('|')] if genres_str and genres_str != '(no genres listed)' else []
+            
+            # Get num_ratings if available
+            num_ratings = num_ratings_map.get(movie_id, 0)
+            
+            # Store in database
+            db.set_movie_metadata(movie_id, title, release_year, genres, num_ratings)
+            count += 1
+            
+            if count % 10000 == 0:
+                print(f"Loaded {count} movie metadata records...")
+    
+    print(f"Loaded {count} movie metadata records from CSV files.")
+
+
 def serve():
     """Start the gRPC server."""
     # Generate proto modules
@@ -150,6 +229,9 @@ def serve():
     
     # Initialize database from pickle files if empty
     initialize_database_from_pickle()
+    
+    # Initialize movie metadata from CSV files if empty
+    initialize_movie_metadata_from_csv()
     
     # Pre-warm cache from database
     redis_client = redis_loader.get_redis_client()

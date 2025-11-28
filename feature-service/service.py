@@ -3,7 +3,7 @@ import grpc
 import numpy as np
 import redis_loader
 import db
-from redis_loader import get_redis_client, USER_PREFIX, MOVIE_PREFIX, EMBEDDING_DIMENSION
+from redis_loader import get_redis_client, USER_PREFIX, MOVIE_PREFIX, MOVIE_METADATA_PREFIX, EMBEDDING_DIMENSION
 
 
 class EmbeddingService:
@@ -308,6 +308,37 @@ class EmbeddingService:
             context=context
         )
 
+    def GetMovieMetadata(self, request, context):
+        """Get movie metadata (title, release year, genres, num_ratings) for a specific movie."""
+        key = f"{MOVIE_METADATA_PREFIX}{request.movieId}"
+        val = self.redis_client.get(key)
+        if val is not None:
+            # Cache hit
+            metadata = pickle.loads(val)
+            return self.embeddings_pb2.MovieMetadataReply(
+                title=metadata['title'],
+                releaseYear=metadata['release_year'] if metadata['release_year'] is not None else 0,
+                genres=metadata['genres'],
+                numRatings=metadata['num_ratings']
+            )
+        
+        # Cache miss: try database
+        metadata = db.get_movie_metadata(request.movieId)
+        if metadata is None:
+            context.set_details(f"Movie metadata {request.movieId} not found")
+            context.set_code(grpc.StatusCode.NOT_FOUND)
+            return self.embeddings_pb2.MovieMetadataReply()
+        
+        # Populate cache
+        self.redis_client.set(key, pickle.dumps(metadata))
+        
+        return self.embeddings_pb2.MovieMetadataReply(
+            title=metadata['title'],
+            releaseYear=metadata['release_year'] if metadata['release_year'] is not None else 0,
+            genres=metadata['genres'],
+            numRatings=metadata['num_ratings']
+        )
+
 
 def create_servicer(embedding_service, embeddings_pb2_grpc):
     """
@@ -358,6 +389,9 @@ def create_servicer(embedding_service, embeddings_pb2_grpc):
         
         def DislikeMovie(self, request, context):
             return embedding_service.DislikeMovie(request, context)
+        
+        def GetMovieMetadata(self, request, context):
+            return embedding_service.GetMovieMetadata(request, context)
     
     return EmbeddingServiceServicer()
 

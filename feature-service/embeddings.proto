@@ -15,6 +15,7 @@ service EmbeddingService {
   rpc GetWatchedMovies (UserId) returns (MovieIdList) {}
   rpc LikeMovie (UserIdAndMovieId) returns (Empty) {}
   rpc DislikeMovie (UserIdAndMovieId) returns (Empty) {}
+  rpc GetMovieMetadata (MovieId) returns (MovieMetadataReply) {}
 }
 
 message UserId {
@@ -50,5 +51,11 @@ message MovieEmbedding {
 }
 message MovieEmbeddingsBatch {
   repeated MovieEmbedding embeddings = 1;
+}
+message MovieMetadataReply {
+  string title = 1;
+  int32 releaseYear = 2;
+  repeated string genres = 3;
+  int32 numRatings = 4;
 }
 

@@ -14,11 +14,8 @@ RUN uv sync --frozen
 # Copy service files
 COPY feature-service/ .
 
-# Create embedding-calc directory and copy embedding files (maintaining relative path structure)
-# Since WORKDIR is /app, ../embedding-calc resolves to /embedding-calc
-RUN mkdir -p /embedding-calc
-COPY embedding-calc/user_embeddings.pkl /embedding-calc/user_embeddings.pkl
-COPY embedding-calc/movie_embeddings.pkl /embedding-calc/movie_embeddings.pkl
+# Data directory will be mounted as a volume at /data
+# No need to copy large CSV/pkl files into the image
 
 # Expose gRPC port
 EXPOSE 50051

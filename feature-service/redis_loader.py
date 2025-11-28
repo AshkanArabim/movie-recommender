@@ -6,10 +6,13 @@ import numpy as np
 # Redis and Embedding Constants
 REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
 REDIS_PORT = int(os.environ.get('REDIS_PORT', 6379))
-USER_EMBEDDING_PATH = '../embedding-calc/user_embeddings.pkl'
-MOVIE_EMBEDDING_PATH = '../embedding-calc/movie_embeddings.pkl'
+# Data directory path (mounted volume in Docker)
+DATA_DIR = os.environ.get('DATA_DIR', '/data')
+USER_EMBEDDING_PATH = os.path.join(DATA_DIR, 'user_embeddings.pkl')
+MOVIE_EMBEDDING_PATH = os.path.join(DATA_DIR, 'movie_embeddings.pkl')
 USER_PREFIX = 'user:'  # Format: user:<id>
 MOVIE_PREFIX = 'movie:'  # Format: movie:<id>
+MOVIE_METADATA_PREFIX = 'movie_metadata:'  # Format: movie_metadata:<id>
 CURRENT_USER_EMBEDDING_KEY = 'current_user_embedding'
 EMBEDDING_DIMENSION = 64  # Dimension of embeddings (from embedding-calc/exp.ipynb)
 

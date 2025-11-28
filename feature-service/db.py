@@ -60,6 +60,18 @@ def init_schema():
                 )
             """)
             
+            # Create movie_metadata table
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS movie_metadata (
+                    movie_id INTEGER PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    release_year INTEGER,
+                    genres TEXT[],
+                    num_ratings INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
             # Create indexes for better query performance
             cur.execute("""
                 CREATE INDEX IF NOT EXISTS idx_user_watched_movies_user_id 
@@ -272,6 +284,63 @@ def load_all_watched_movies() -> List[Tuple[int, int]]:
         with conn.cursor() as cur:
             cur.execute("SELECT user_id, movie_id FROM user_watched_movies")
             return [(row[0], row[1]) for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+# Movie Metadata Operations
+def get_movie_metadata(movie_id: int) -> Optional[dict]:
+    """Get movie metadata from database. Returns None if not found."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT title, release_year, genres, num_ratings 
+                FROM movie_metadata 
+                WHERE movie_id = %s
+            """, (movie_id,))
+            row = cur.fetchone()
+            if row is None:
+                return None
+            return {
+                'title': row[0],
+                'release_year': row[1],
+                'genres': row[2] if row[2] else [],
+                'num_ratings': row[3] if row[3] else 0
+            }
+    finally:
+        conn.close()
+
+
+def set_movie_metadata(movie_id: int, title: str, release_year: Optional[int], 
+                      genres: List[str], num_ratings: int = 0):
+    """Set movie metadata in database."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO movie_metadata (movie_id, title, release_year, genres, num_ratings, created_at)
+                VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (movie_id) 
+                DO UPDATE SET 
+                    title = EXCLUDED.title,
+                    release_year = EXCLUDED.release_year,
+                    genres = EXCLUDED.genres,
+                    num_ratings = EXCLUDED.num_ratings
+            """, (movie_id, title, release_year, genres, num_ratings))
+            conn.commit()
+    finally:
+        conn.close()
+
+
+def has_movie_metadata() -> bool:
+    """Check if database has any movie metadata."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM movie_metadata")
+            count = cur.fetchone()[0]
+            return count > 0
     finally:
         conn.close()
 
