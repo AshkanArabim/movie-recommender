@@ -73,5 +73,32 @@ services:
       - candidate-service
       - feature-service
 
+  gateway-service:
+    build:
+      context: .
+      dockerfile: gateway-service/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - RANKING_SERVICE_HOST=ranking-service
+      - RANKING_SERVICE_PORT=50053
+      - FEATURE_SERVICE_HOST=feature-service
+      - FEATURE_SERVICE_PORT=50051
+    depends_on:
+      - ranking-service
+      - feature-service
+
+  client-service:
+    build:
+      context: .
+      dockerfile: client-service/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      - gateway-service
+
 volumes:
   postgres_data:
