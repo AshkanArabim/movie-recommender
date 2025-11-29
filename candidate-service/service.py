@@ -194,19 +194,25 @@ class CandidateService:
         user_embedding = user_embedding.reshape(1, -1)
         faiss.normalize_L2(user_embedding)
         
-        # Search for top 50 movies, excluding watched ones using IDSelectorNot
-        k = min(50, self.index.ntotal)
+        # Search for top movies, then filter out watched ones
+        # Search for more results than needed to account for filtering
+        target_k = 50
+        search_k = min(target_k + len(watched_movie_ids), self.index.ntotal)
         
-        if len(watched_movie_ids) > 0:
-            # Create ID selector to exclude watched movies
-            selector = faiss.IDSelectorNot(watched_movie_ids)
-            distances, indices = self.index.search_with_idselector(user_embedding, k, selector)
-        else:
-            # No watched movies to exclude, do regular search
-            distances, indices = self.index.search(user_embedding, k)
+        # Perform search
+        distances, indices = self.index.search(user_embedding, search_k)
         
-        # Convert indices (which are now movie IDs) to list
-        recommended_movie_ids = [int(movie_id) for movie_id in indices[0] if movie_id >= 0]
+        # Convert indices (which are now movie IDs) to list and filter out watched movies
+        watched_set = set(watched_movie_ids) if len(watched_movie_ids) > 0 else set()
+        recommended_movie_ids = []
+        
+        for movie_id in indices[0]:
+            if movie_id >= 0:  # Valid ID
+                movie_id_int = int(movie_id)
+                if movie_id_int not in watched_set:
+                    recommended_movie_ids.append(movie_id_int)
+                    if len(recommended_movie_ids) >= target_k:
+                        break
         
         return self.candidates_pb2.MovieIdList(movieIds=recommended_movie_ids)
 

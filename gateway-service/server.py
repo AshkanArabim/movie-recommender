@@ -2,11 +2,25 @@ import os
 import sys
 import tempfile
 import grpc
+import logging
+import traceback
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List, Optional
 from grpc_tools import protoc
+
+# Configure logging to output to stdout/stderr for docker logs
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.StreamHandler(sys.stderr)
+    ]
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Movie Recommendation Gateway")
 
@@ -18,6 +32,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Global exception handler to catch any unhandled exceptions (but not HTTPExceptions)
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    """Catch all unhandled exceptions and log them."""
+    # Don't catch HTTPExceptions - let FastAPI handle those
+    if isinstance(exc, HTTPException):
+        raise
+    
+    logger.error(f"Unhandled exception: {type(exc).__name__}: {str(exc)}")
+    logger.error(f"Request URL: {request.url}")
+    logger.error(f"Request method: {request.method}")
+    logger.error(traceback.format_exc())
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {str(exc)}"}
+    )
 
 # Service connection settings
 RANKING_SERVICE_HOST = os.environ.get('RANKING_SERVICE_HOST', 'localhost')
@@ -107,16 +139,31 @@ def _get_embeddings_proto_modules():
 
 
 # Initialize gRPC clients
-ranking_pb2, ranking_pb2_grpc = _get_ranking_proto_modules()
-embeddings_pb2, embeddings_pb2_grpc = _get_embeddings_proto_modules()
+try:
+    logger.info("Initializing gRPC proto modules...")
+    ranking_pb2, ranking_pb2_grpc = _get_ranking_proto_modules()
+    logger.info("Ranking proto modules loaded successfully")
+    embeddings_pb2, embeddings_pb2_grpc = _get_embeddings_proto_modules()
+    logger.info("Feature proto modules loaded successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize proto modules: {type(e).__name__}: {str(e)}")
+    logger.error(traceback.format_exc())
+    raise
 
 # Create gRPC channels
-ranking_channel = grpc.insecure_channel(f'{RANKING_SERVICE_HOST}:{RANKING_SERVICE_PORT}')
-feature_channel = grpc.insecure_channel(f'{FEATURE_SERVICE_HOST}:{FEATURE_SERVICE_PORT}')
+ranking_address = f'{RANKING_SERVICE_HOST}:{RANKING_SERVICE_PORT}'
+feature_address = f'{FEATURE_SERVICE_HOST}:{FEATURE_SERVICE_PORT}'
+logger.info(f"Connecting to ranking service at {ranking_address}")
+logger.info(f"Connecting to feature service at {feature_address}")
+
+ranking_channel = grpc.insecure_channel(ranking_address)
+feature_channel = grpc.insecure_channel(feature_address)
 
 # Create stubs
 ranking_stub = ranking_pb2_grpc.RankingServiceStub(ranking_channel)
 feature_stub = embeddings_pb2_grpc.EmbeddingServiceStub(feature_channel)
+
+logger.info("Gateway service initialized successfully")
 
 
 # Pydantic models for API responses
@@ -157,12 +204,33 @@ async def get_recommendations(user_id: int = Query(..., description="User ID")):
     with movie metadata from the feature service.
     """
     try:
+        logger.info(f"Fetching recommendations for user_id={user_id}")
+        
         # Get ranked movie IDs from ranking service
         ranking_request = ranking_pb2.UserId(userId=user_id)
-        ranking_response = ranking_stub.GetRankedRecommendations(ranking_request, timeout=10.0)
-        movie_ids = list(ranking_response.movieIds)
+        logger.debug(f"Calling ranking service at {RANKING_SERVICE_HOST}:{RANKING_SERVICE_PORT}")
+        
+        try:
+            ranking_response = ranking_stub.GetRankedRecommendations(ranking_request, timeout=10.0)
+            movie_ids = list(ranking_response.movieIds)
+            logger.info(f"Received {len(movie_ids)} movie IDs from ranking service")
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error from ranking service: {e.code()} - {e.details()}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to get recommendations from ranking service: {e.details()}"
+            )
+        except Exception as e:
+            logger.error(f"Unexpected error calling ranking service: {type(e).__name__}: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(
+                status_code=500,
+                detail=f"Unexpected error calling ranking service: {str(e)}"
+            )
         
         if not movie_ids:
+            logger.info("No movie IDs returned from ranking service")
             return RecommendationResponse(movies=[])
         
         # Fetch metadata for all recommended movies
@@ -170,7 +238,17 @@ async def get_recommendations(user_id: int = Query(..., description="User ID")):
         for movie_id in movie_ids:
             try:
                 metadata_request = embeddings_pb2.MovieId(movieId=movie_id)
-                metadata_response = feature_stub.GetMovieMetadata(metadata_request, timeout=5.0)
+                logger.debug(f"Fetching metadata for movie_id={movie_id}")
+                
+                try:
+                    metadata_response = feature_stub.GetMovieMetadata(metadata_request, timeout=5.0)
+                except grpc.RpcError as e:
+                    logger.warning(f"Failed to get metadata for movie {movie_id}: {e.code()} - {e.details()}")
+                    continue
+                except Exception as e:
+                    logger.warning(f"Unexpected error getting metadata for movie {movie_id}: {type(e).__name__}: {str(e)}")
+                    logger.warning(traceback.format_exc())
+                    continue
                 
                 movies.append(MovieMetadata(
                     movieId=movie_id,
@@ -179,17 +257,24 @@ async def get_recommendations(user_id: int = Query(..., description="User ID")):
                     genres=list(metadata_response.genres),
                     numRatings=metadata_response.numRatings
                 ))
-            except grpc.RpcError as e:
-                # If we can't get metadata for a movie, skip it
-                print(f"Warning: Failed to get metadata for movie {movie_id}: {e.details()}")
+            except Exception as e:
+                logger.warning(f"Error processing movie {movie_id}: {type(e).__name__}: {str(e)}")
+                logger.warning(traceback.format_exc())
                 continue
         
+        logger.info(f"Returning {len(movies)} movies with metadata")
         return RecommendationResponse(movies=movies)
         
-    except grpc.RpcError as e:
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        # Catch any other unexpected exceptions
+        logger.error(f"Unexpected error in get_recommendations: {type(e).__name__}: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to get recommendations: {e.details()}"
+            detail=f"Internal server error: {str(e)}"
         )
 
 
@@ -201,22 +286,44 @@ async def like_movie(request: LikeDislikeRequest):
     This will update the user's embedding and add the movie to their watched list.
     """
     try:
+        logger.info(f"Liking movie {request.movie_id} for user {request.user_id}")
         like_request = embeddings_pb2.UserIdAndMovieId(userId=request.user_id, movieId=request.movie_id)
-        feature_stub.LikeMovie(like_request, timeout=5.0)
         
+        try:
+            feature_stub.LikeMovie(like_request, timeout=5.0)
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error liking movie: {e.code()} - {e.details()}")
+            logger.error(traceback.format_exc())
+            if e.code() == grpc.StatusCode.NOT_FOUND:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Movie {request.movie_id} not found"
+                )
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to like movie: {e.details()}"
+            )
+        except Exception as e:
+            logger.error(f"Unexpected error liking movie: {type(e).__name__}: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(
+                status_code=500,
+                detail=f"Unexpected error: {str(e)}"
+            )
+        
+        logger.info(f"Successfully liked movie {request.movie_id} for user {request.user_id}")
         return LikeDislikeResponse(
             success=True,
             message=f"Successfully liked movie {request.movie_id}"
         )
-    except grpc.RpcError as e:
-        if e.code() == grpc.StatusCode.NOT_FOUND:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Movie {request.movie_id} not found"
-            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in like_movie: {type(e).__name__}: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to like movie: {e.details()}"
+            detail=f"Internal server error: {str(e)}"
         )
 
 
@@ -228,22 +335,44 @@ async def dislike_movie(request: LikeDislikeRequest):
     This will update the user's embedding and add the movie to their watched list.
     """
     try:
+        logger.info(f"Disliking movie {request.movie_id} for user {request.user_id}")
         dislike_request = embeddings_pb2.UserIdAndMovieId(userId=request.user_id, movieId=request.movie_id)
-        feature_stub.DislikeMovie(dislike_request, timeout=5.0)
         
+        try:
+            feature_stub.DislikeMovie(dislike_request, timeout=5.0)
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error disliking movie: {e.code()} - {e.details()}")
+            logger.error(traceback.format_exc())
+            if e.code() == grpc.StatusCode.NOT_FOUND:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Movie {request.movie_id} not found"
+                )
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to dislike movie: {e.details()}"
+            )
+        except Exception as e:
+            logger.error(f"Unexpected error disliking movie: {type(e).__name__}: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(
+                status_code=500,
+                detail=f"Unexpected error: {str(e)}"
+            )
+        
+        logger.info(f"Successfully disliked movie {request.movie_id} for user {request.user_id}")
         return LikeDislikeResponse(
             success=True,
             message=f"Successfully disliked movie {request.movie_id}"
         )
-    except grpc.RpcError as e:
-        if e.code() == grpc.StatusCode.NOT_FOUND:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Movie {request.movie_id} not found"
-            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in dislike_movie: {type(e).__name__}: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to dislike movie: {e.details()}"
+            detail=f"Internal server error: {str(e)}"
         )
 
 
