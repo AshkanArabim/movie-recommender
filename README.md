@@ -15,7 +15,7 @@ This movie recommendation system is designed as a production-ready microservices
 The system processes the MovieLens 25M dataset, serving recommendations to users through a clean web interface while maintaining sub-second latency.
 
 ## 🏗️ Architecture
-TODO:
+<img width="885" height="755" alt="image" src="https://github.com/user-attachments/assets/92dd4c5f-1ca1-4487-b6d4-59aa5b5bccf7" />
 
 ### Service Communication
 
